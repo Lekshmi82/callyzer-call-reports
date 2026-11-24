@@ -48,13 +48,16 @@ const lastAttempt = new Map<string, number>();
 
 async function sendReport(kind: "scheduled" | "manual", key: string, to: "test" | "live", cutoff: Date): Promise<void> {
   const group = groupFor(to);
+  // Without a Callyzer key, only a watermarked SAMPLE report may go to the TEST group (to check the WhatsApp link).
+  const sample = !cfg.CALLYZER_API_TOKEN;
   busy = true;
   try {
+    if (sample && (kind === "scheduled" || to === "live")) throw new Error("CALLYZER_API_TOKEN is not set: only a sample report to the TEST group is allowed.");
     if (wa.state !== "ready") throw new Error(`WhatsApp is not connected (${wa.state}). Open the status page and scan the QR code.`);
-    const report = await withRenderer((r) => buildReport(cfg, log, r, { cutoff }));
+    const report = await withRenderer((r) => buildReport(cfg, log, r, { cutoff, sample }));
     await wa.sendToGroup(group, report.png, report.caption, `call-report-${isoDate(cutoff)}.png`);
     if (kind === "scheduled") state.markSent(key);
-    state.addHistory({ kind, key, group: to, status: "sent", detail: `${report.model.team.totalCalls} calls, ${report.model.team.connectedCalls} connected` });
+    state.addHistory({ kind, key, group: to, status: "sent", detail: `${sample ? "SAMPLE data · " : ""}${report.model.team.totalCalls} calls, ${report.model.team.connectedCalls} connected` });
     log.info({ kind, key, to }, "report sent");
   } catch (e) {
     const msg = (e as Error).message;
@@ -121,7 +124,7 @@ ${flash ? `<div class="card"><b>${escapeHtml(flash)}</b></div>` : ""}
 <div class="card"><h2>Groups</h2><table>${groupRow("Test group", cfg.WHATSAPP_TEST_GROUP)}${groupRow("Main group", cfg.WHATSAPP_LIVE_GROUP)}</table>
 ${wa.state === "ready" && groups.length ? `<p class="mute">Groups on this number: ${groups.map(escapeHtml).join(" · ")}</p>` : ""}</div>
 <div class="card"><h2>Send now</h2>
-<form method="post" action="/send/test"><button>Send report to TEST group</button></form>
+<form method="post" action="/send/test"><button>${cfg.CALLYZER_API_TOKEN ? "Send report to TEST group" : "Send SAMPLE report to TEST group"}</button></form>
 <form method="post" action="/send/live" onsubmit="return confirm('Send the report to the MAIN group now?')"><button class="alt">Send report to MAIN group</button></form>
 <a href="/preview.png" target="_blank"><button class="alt" type="button">Preview image (no send)</button></a>
 <p class="mute">Callyzer token: ${cfg.CALLYZER_API_TOKEN ? '<span class="ok">set</span>' : '<span class="bad">missing (set CALLYZER_API_TOKEN)</span>'}</p></div>
