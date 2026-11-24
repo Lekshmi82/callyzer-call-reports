@@ -2,17 +2,31 @@
 
 Fetches today's call data from **Callyzer** and builds the call report image (cards, employee table, Team row), to be posted into a WhatsApp group at **2, 4, 6 and 8 PM IST**.
 
-## Status
+## How it works
 
-- Done and tested: Callyzer API client, metrics, report image (`npm run report` builds the PNG, sends nothing).
-- In progress: always-on WhatsApp group sender (whatsapp-web.js) with the 2/4/6/8 PM IST schedule. **Sending is off until explicitly enabled.**
+An always-on service (`npm start`) keeps a WhatsApp Web login (whatsapp-web.js) for the sending number and posts the report image into a WhatsApp group at **2, 4, 6 and 8 PM IST**. A password-protected status page shows the QR login, lets you send a test report, and turns the schedule on/off and switches TEST ↔ MAIN group.
+
+**Safety defaults:** schedule **OFF**, target **TEST group**. Each scheduled slot is sent at most once (sent-log in `DATA_DIR/state.json`); a failed slot is retried every 3 min for 45 min.
+
+> whatsapp-web.js is unofficial WhatsApp automation. WhatsApp may block the sending number. Use a dedicated number.
+
+## Deploy on Railway
+
+1. railway.app → **New Project → Deploy from GitHub repo** → pick this repo (it builds the `Dockerfile`).
+2. Service → **Settings → Volumes → Add volume**, mount path **`/data`** (keeps the WhatsApp login across restarts).
+3. Service → **Variables**: `CALLYZER_API_TOKEN`, `ADMIN_PASSWORD`, `WHATSAPP_TEST_GROUP`, `WHATSAPP_LIVE_GROUP`, `HASH_SALT` (any long random text).
+4. Service → **Settings → Networking → Generate Domain**, open it, log in as `admin` / your `ADMIN_PASSWORD`.
+5. On the sending phone: WhatsApp → **Linked devices → Link a device** → scan the QR on the page.
+6. **Send report to TEST group** → check it → **Switch to MAIN group** → **Turn schedule ON**.
+
+The same Dockerfile runs on any always-on host (Oracle Cloud Always Free VM, office PC, VPS): `docker build -t callyzer-bot . && docker run -d --restart unless-stopped -p 3000:3000 -v callyzer-data:/data --env-file .env callyzer-bot`.
 
 ## Commands
 
 ```bash
 npm ci
-npm run report                      # build today's image (00:00 IST → now) into ./out — sends nothing
-npm run report -- --at 14:00        # data up to 2:00 PM IST today
+npm start                           # the always-on service + status page (http://localhost:3000)
+npm run report                      # build today's image into ./out — sends nothing
 npm run report -- --sample          # fake data, watermarked, no Callyzer needed
 npm test                            # unit + end-to-end tests (mock Callyzer)
 ```

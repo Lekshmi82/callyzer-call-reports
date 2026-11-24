@@ -4,7 +4,7 @@ import { Crypto } from "../lib/crypto.js";
 import { startOfDay } from "../lib/time.js";
 import type { Logger } from "../logger.js";
 import { computeReport, type ReportModel } from "./metrics.js";
-import type { ReportRenderer } from "./render.js";
+import type { PngRenderer } from "./render.js";
 import { sampleDataset } from "./sample.js";
 import { renderReportHtml, summaryLine } from "./template.js";
 
@@ -19,7 +19,7 @@ export interface BuiltReport {
 export async function buildReport(
   cfg: AppConfig,
   log: Logger,
-  renderer: ReportRenderer,
+  renderer: PngRenderer,
   opts: { cutoff: Date; sample?: boolean },
 ): Promise<BuiltReport> {
   const cutoff = opts.cutoff;

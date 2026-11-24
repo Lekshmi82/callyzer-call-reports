@@ -12,7 +12,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "mock:callyzer": "tsx dev/mock-callyzer.ts",
-    "report": "tsx src/run-report.ts"
+    "report": "tsx src/run-report.ts",
+    "start": "tsx src/service.ts"
   },
   "dependencies": {
     "luxon": "^3.7.2",

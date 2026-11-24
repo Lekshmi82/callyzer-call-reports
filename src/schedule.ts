@@ -36,21 +36,27 @@ export interface HistoryEntry {
   detail: string;
 }
 
+export interface RuntimeSettings {
+  scheduleEnabled?: boolean;
+  sendTo?: "test" | "live";
+}
+
 interface StateFile {
   sent: Record<string, string>; // slot key -> ISO time sent
   history: HistoryEntry[];
+  settings: RuntimeSettings; // changed from the status page; override env defaults
 }
 
 /** Small JSON state file in the persistent data folder: which slots were sent (duplicate guard) + recent history. */
 export class StateStore {
-  private state: StateFile = { sent: {}, history: [] };
+  private state: StateFile = { sent: {}, history: [], settings: {} };
   private readonly file: string;
 
   constructor(dataDir: string) {
     fs.mkdirSync(dataDir, { recursive: true });
     this.file = path.join(dataDir, "state.json");
     try {
-      this.state = { sent: {}, history: [], ...JSON.parse(fs.readFileSync(this.file, "utf8")) };
+      this.state = { sent: {}, history: [], settings: {}, ...JSON.parse(fs.readFileSync(this.file, "utf8")) };
     } catch {
       /* first run */
     }
@@ -71,6 +77,15 @@ export class StateStore {
   addHistory(e: Omit<HistoryEntry, "at">): void {
     this.state.history.unshift({ at: new Date().toISOString(), ...e });
     this.state.history = this.state.history.slice(0, 60);
+    this.save();
+  }
+
+  settings(): RuntimeSettings {
+    return { ...this.state.settings };
+  }
+
+  updateSettings(patch: RuntimeSettings): void {
+    this.state.settings = { ...this.state.settings, ...patch };
     this.save();
   }
 

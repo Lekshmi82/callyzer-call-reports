@@ -29,7 +29,7 @@ const schema = z.object({
   SEND_TO: z.enum(["test", "live"]).default("test"),
 
   // --- Schedule (IST)
-  SCHEDULE_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  SCHEDULE_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   REPORT_SLOTS: listOf("14:00,16:00,18:00,20:00"),
   /** ISO weekdays to send on: 1=Mon … 7=Sun */
   REPORT_DAYS: listOf("1,2,3,4,5,6,7").transform((a) => a.map(Number).filter((n) => n >= 1 && n <= 7)),
