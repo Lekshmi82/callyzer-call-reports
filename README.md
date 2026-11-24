@@ -10,6 +10,21 @@ An always-on service (`npm start`) keeps a WhatsApp Web login (whatsapp-web.js) 
 
 > whatsapp-web.js is unofficial WhatsApp automation. WhatsApp may block the sending number. Use a dedicated number.
 
+## Run on a PC (Windows / Mac)
+
+1. Install **Node.js 22 LTS** (nodejs.org) and **Git** (git-scm.com).
+2. In a terminal:
+   ```bash
+   git clone https://github.com/Lekshmi82/callyzer-call-reports
+   cd callyzer-call-reports
+   npm ci
+   npx playwright install chromium
+   ```
+3. Copy `.env.example` to `.env` and fill in `CALLYZER_API_TOKEN`, `ADMIN_PASSWORD`, `WHATSAPP_TEST_GROUP`, `WHATSAPP_LIVE_GROUP`, `HASH_SALT`.
+4. `npm start`, then open **http://localhost:3000** (user `admin`, your `ADMIN_PASSWORD`) and scan the QR code.
+
+The PC must be on and awake at the report times (a missed slot is retried for 45 minutes once it is back). Moving to a cloud host later only needs the same `.env` values and one new QR scan.
+
 ## Deploy on Railway
 
 1. railway.app → **New Project → Deploy from GitHub repo** → pick this repo (it builds the `Dockerfile`).
