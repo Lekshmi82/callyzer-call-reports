@@ -149,11 +149,15 @@ function authorised(req: http.IncomingMessage): boolean {
 }
 
 /** Blocks cross-site form posts (basic auth is sent automatically by browsers). */
-function sameOrigin(req: http.IncomingMessage): boolean {
-  const origin = req.headers.origin;
-  if (!origin) return req.headers["sec-fetch-site"] === undefined || req.headers["sec-fetch-site"] === "same-origin";
+export function sameOrigin(headers: http.IncomingHttpHeaders): boolean {
+  // Modern browsers say exactly where a request came from.
+  const site = headers["sec-fetch-site"];
+  if (typeof site === "string") return site === "same-origin" || site === "none";
+  // Older browsers: compare Origin with Host when present.
+  const origin = headers.origin;
+  if (!origin) return true;
   try {
-    return new URL(origin).host === req.headers.host;
+    return new URL(origin).host === headers.host;
   } catch {
     return false;
   }
@@ -167,7 +171,7 @@ const server = http.createServer(async (req, res) => {
       "Cache-Control": "no-store",
       "X-Frame-Options": "DENY",
       "X-Content-Type-Options": "nosniff",
-      "Referrer-Policy": "no-referrer",
+      "Referrer-Policy": "same-origin",
       ...extra,
     });
     res.end(body);
@@ -193,7 +197,7 @@ const server = http.createServer(async (req, res) => {
       return send(200, r.png, "image/png");
     }
     if (req.method === "POST") {
-      if (!sameOrigin(req)) return send(403, "Cross-site request blocked", "text/plain");
+      if (!sameOrigin(req.headers)) return send(403, "Cross-site request blocked", "text/plain");
       const m = /^\/(send|schedule|target)\/(test|live|on|off)$/.exec(url.pathname);
       if (url.pathname === "/logout") {
         await wa.logout();
