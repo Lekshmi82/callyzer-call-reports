@@ -51,17 +51,18 @@ function cells(m: Metrics) {
     <td>${dur(m.totalDuration)}</td>
     <td class="conn">${m.connectedCalls}${m.totalCalls > 0 ? html`<span class="pct">${m.connectedPct}%</span>` : ""}</td>
     <td>${dur(m.connectedDuration)}</td>
-    <td>${dur(m.avgConnected)}</td>
+    <td>${formatDuration(m.avgConnected)}</td>
     <td>${m.uniqueClients}</td>
     <td>${m.uniqueConnected}</td>`;
 }
 
 function personRow(r: PersonRow) {
+  const phones = r.phones > 1 ? html`<span class="ph">${r.phones} phones</span>` : "";
   if (!r.active) {
     const dot = raw("<td>·</td>");
-    return html`<tr class="idle"><td>${r.name}</td>${dot}${dot}<td class="conn">·</td>${dot}${dot}${dot}${dot}</tr>`;
+    return html`<tr class="idle"><td>${r.name}${phones}</td>${dot}${dot}<td class="conn">·</td>${dot}${dot}${dot}${dot}</tr>`;
   }
-  return html`<tr><td>${r.name}</td>${cells(r)}</tr>`;
+  return html`<tr><td>${r.name}${phones}</td>${cells(r)}</tr>`;
 }
 
 export function renderReportHtml(m: ReportModel): string {
