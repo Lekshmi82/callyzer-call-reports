@@ -55,11 +55,10 @@ npm test                            # unit + end-to-end tests (mock Callyzer)
 | Total Duration | Duration of incoming + outgoing calls |
 | Conn. Calls Duration / Talk Time | Duration of connected calls |
 | Conn. Call Avg. Duration | Connected duration ÷ connected calls |
-| Working / Idle Hours | Callyzer's per-phone values, added across a person's phones |
 | Unique Clients | Distinct client numbers, counted once per person; Team row counts each client once across the team |
 | Unique Conn. Calls | Distinct clients with at least one connected call |
 
-People with several phones are combined by their Callyzer name (use `EMPLOYEE_ALIASES="Old=New"` if names differ). Registered employees with no calls are shown greyed out. Phone numbers are never shown, stored or logged.
+People with several phones are combined into one row by name: case, spacing and a trailing number ("Varsha 2", "Varsha (2)") are ignored. Use `EMPLOYEE_ALIASES="Old=New"` if names differ otherwise. Durations are shown without seconds. Registered employees with no calls are shown greyed out. Phone numbers are never shown, stored or logged.
 
 ## Callyzer API used (v2.3)
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CallRecord, Employee, EmployeeSummaryRow } from "../src/callyzer/client.js";
 import { Crypto } from "../src/lib/crypto.js";
 import { formatDuration, parseHms } from "../src/lib/format.js";
-import { computeReport, normaliseNumber, type ComputeInput } from "../src/report/metrics.js";
+import { canonicalName, computeReport, normaliseNumber, type ComputeInput } from "../src/report/metrics.js";
 import { sampleDataset } from "../src/report/sample.js";
 
 const crypto = new Crypto("test-master-key-that-is-at-least-32-chars");
@@ -81,6 +81,15 @@ describe("formatting", () => {
   });
 });
 
+describe("canonicalName", () => {
+  it("treats a trailing phone marker as the same person", () => {
+    for (const n of ["Dharshan 2", "Dharshan-2", "Dharshan (2)", "Dharshan2", " dharshan ", "Dharshan_2"]) expect(canonicalName(n).toLowerCase()).toBe("dharshan");
+    expect(canonicalName("Syed  Mustafa")).toBe("Syed Mustafa");
+    expect(canonicalName("Agent 007")).toBe("Agent 007");
+    expect(canonicalName("Team 12")).toBe("Team 12");
+  });
+});
+
 describe("computeReport", () => {
   it("applies Callyzer's connected definition (> 2 seconds, incoming/outgoing only)", () => {
     const r = computeReport(
@@ -127,6 +136,16 @@ describe("computeReport", () => {
     expect(row.idleSeconds).toBe(7200 + 600);
     expect(r.model.footnotes[0]).toContain("Phones combined for Dharshan");
     expect(r.warnings).toEqual([]); // cross-check per phone matches
+  });
+
+  it("merges 'Varsha' and 'Varsha 2' into one row", () => {
+    const r = computeReport(
+      input({
+        employees: [emp("Varsha", "7000000011"), emp("Varsha 2", "7000000012")],
+        records: [rec("Varsha", "7000000011", "9800000001", "Outgoing", 60), rec("Varsha 2", "7000000012", "9800000002", "Outgoing", 60)],
+      }),
+    );
+    expect(r.model.rows.map((x) => [x.name, x.totalCalls, x.phones])).toEqual([["Varsha", 2, 2]]);
   });
 
   it("counts team unique clients once across employees (not the sum of rows)", () => {

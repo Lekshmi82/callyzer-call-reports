@@ -165,7 +165,7 @@ export function computeReport(input: ComputeInput): ComputeResult {
     const o = input.overrides.get(phoneKey);
     if (o?.excluded) return null;
     const p = phones.get(phoneKey)!;
-    const name = (o?.personOverride?.trim() || p.empName.trim() || `Unnamed ${p.masked}`).replace(/\s+/g, " ");
+    const name = canonicalName(o?.personOverride?.trim() || p.empName.trim() || `Unnamed ${p.masked}`);
     return { id: name.toLowerCase(), name };
   };
 
@@ -253,10 +253,10 @@ export function computeReport(input: ComputeInput): ComputeResult {
   const multi = rows.filter((r) => r.phones > 1).map((r) => r.name);
   if (multi.length)
     footnotes.push(
-      `Phones combined for ${listJoin(multi)}: calls, durations, working and idle hours are added across phones; each client is counted once per person.`,
+      `Phones combined for ${listJoin(multi)}.`,
     );
   footnotes.push("Connected = incoming/outgoing call longer than 2s. Team unique clients count each client once across the team.");
-  if (input.includesWhatsApp) footnotes.push("Includes WhatsApp calls. Working and idle hours are from phone calls.");
+  if (input.includesWhatsApp) footnotes.push("Includes WhatsApp calls.");
 
   const staleCutoff = input.cutoff.getTime() - input.staleSyncMinutes * 60_000;
   const stale: string[] = [];
@@ -285,6 +285,19 @@ export function computeReport(input: ComputeInput): ComputeResult {
     warnings,
     stats: { records: seen.size, duplicatesDropped, phones: phones.size, persons: rows.length },
   };
+}
+
+/**
+ * One person = one name. Spacing/case differences and a trailing phone number marker
+ * ("Dharshan 2", "Dharshan-2", "Dharshan (2)") are ignored, so a person's phones add up into one row.
+ */
+export function canonicalName(raw: string): string {
+  const cleaned = raw
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/(?<=[A-Za-z])\s*(?:[-_]\s*)?\(?\s*\d\s*\)?$/, "")
+    .trim();
+  return cleaned || raw.trim();
 }
 
 function listJoin(items: string[]): string {
