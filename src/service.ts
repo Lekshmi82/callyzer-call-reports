@@ -6,6 +6,7 @@
  *
  * Safety defaults: schedule OFF and target = TEST group until switched on the status page.
  */
+import fs from "node:fs";
 import http from "node:http";
 import { chromium } from "playwright";
 import { loadConfig, type AppConfig } from "./config.js";
@@ -22,7 +23,7 @@ const cfg: AppConfig = loadConfig();
 const log = createLogger(cfg.LOG_LEVEL);
 const state = new StateStore(cfg.DATA_DIR);
 const chromePath = cfg.CHROMIUM_EXECUTABLE_PATH || chromium.executablePath();
-const wa = new WhatsAppGroupSender(cfg.DATA_DIR, chromePath, log);
+const wa = new WhatsAppGroupSender(cfg.DATA_DIR, chromePath, log, cfg.WHATSAPP_SHOW_BROWSER);
 
 const settings = () => {
   const s = state.settings();
@@ -108,7 +109,9 @@ async function statusHtml(flash: string): Promise<string> {
       ? `<span class="ok">Connected</span> <span class="mute">(${escapeHtml(wa.me ?? "")})</span>`
       : wa.state === "qr" && wa.qrDataUrl
         ? `<span class="bad">Not logged in</span><p>On the phone with the sending number: WhatsApp → <b>Linked devices</b> → <b>Link a device</b>, then scan:</p><img class="qr" src="${wa.qrDataUrl}" alt="WhatsApp QR code"><p class="mute">Page refreshes every 20 s.</p>`
-        : `<span class="bad">${escapeHtml(wa.state)}</span> <span class="mute">${escapeHtml(wa.lastError ?? "starting… refresh in a few seconds")}</span>`;
+        : `<span class="bad">${escapeHtml(wa.state)}</span> <span class="mute">${escapeHtml(wa.lastError ?? "starting… WhatsApp Web can take 1–3 minutes to load")}</span>${
+            wa.lastError && fs.existsSync(wa.debugScreenshotPath) ? ` <a href="/debug.png" target="_blank">What WhatsApp Web showed</a>` : ""
+          }`;
   const groupRow = (label: string, name: string) =>
     `<tr><td>${label}</td><td>${name ? escapeHtml(name) : '<span class="bad">not set</span>'}</td><td>${wa.state !== "ready" ? "–" : has(name) ? '<span class="ok">found</span>' : '<span class="bad">not found</span>'}</td></tr>`;
   const next = upcomingSlots(cfg.REPORT_SLOTS, cfg.REPORT_DAYS, new Date(), 4).map((d) => `${isoDate(d)} ${clockLabel(d)}`);
@@ -179,6 +182,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/") {
       const html = await statusHtml(url.searchParams.get("m") ?? "");
       return send(200, wa.state === "ready" ? html : html.replace("<head>", '<head><meta http-equiv="refresh" content="20">'));
+    }
+    if (req.method === "GET" && url.pathname === "/debug.png") {
+      if (!fs.existsSync(wa.debugScreenshotPath)) return send(404, "No screenshot", "text/plain");
+      return send(200, fs.readFileSync(wa.debugScreenshotPath), "image/png");
     }
     if (req.method === "GET" && url.pathname === "/preview.png") {
       const sample = !cfg.CALLYZER_API_TOKEN;

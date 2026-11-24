@@ -24,15 +24,24 @@ export class WhatsAppGroupSender {
     private readonly dataDir: string,
     private readonly executablePath: string | undefined,
     private readonly log: Logger,
+    private readonly showBrowser = false,
   ) {}
+
+  /** Screenshot of the WhatsApp Web page saved when start-up fails (shown on the status page). */
+  get debugScreenshotPath(): string {
+    return path.join(this.dataDir, "whatsapp-debug.png");
+  }
 
   async start(): Promise<void> {
     const sessionDir = path.join(this.dataDir, "wwebjs");
     removeStaleChromeLocks(sessionDir);
     const client = new Client({
       authStrategy: new LocalAuth({ dataPath: sessionDir }),
+      // WhatsApp Web can take well over 30s to load on a slow connection.
+      authTimeoutMs: 180_000,
       puppeteer: {
-        headless: true,
+        headless: !this.showBrowser,
+        protocolTimeout: 300_000,
         executablePath: this.executablePath,
         args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-first-run"],
       },
@@ -69,10 +78,29 @@ export class WhatsAppGroupSender {
     try {
       await client.initialize();
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       this.state = "disconnected";
-      this.lastError = `Could not start WhatsApp: ${(e as Error).message}`;
-      this.log.error({ err: (e as Error).message }, "WhatsApp initialize failed; retrying in 60s");
+      this.lastError = `Could not start WhatsApp: ${msg}`;
+      this.log.error({ err: msg }, "WhatsApp initialize failed; retrying in 60s");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (client as any).pupPage?.screenshot({ path: this.debugScreenshotPath }).catch(() => undefined);
+      await this.closeBrowser();
       void this.restart(60_000);
+    }
+  }
+
+  /** Fully shuts the browser so its profile folder is free for the next attempt. */
+  private async closeBrowser(): Promise<void> {
+    const c = this.client;
+    if (!c) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const browser = (c as any).pupBrowser;
+    await c.destroy().catch(() => undefined);
+    await browser?.close().catch(() => undefined);
+    try {
+      browser?.process()?.kill("SIGKILL");
+    } catch {
+      /* already gone */
     }
   }
 
@@ -81,7 +109,7 @@ export class WhatsAppGroupSender {
     this.restarting = true;
     await new Promise((r) => setTimeout(r, delayMs));
     try {
-      await this.client?.destroy().catch(() => undefined);
+      await this.closeBrowser();
     } finally {
       this.restarting = false;
     }
@@ -112,7 +140,7 @@ export class WhatsAppGroupSender {
   }
 
   async stop(): Promise<void> {
-    await this.client?.destroy().catch(() => undefined);
+    await this.closeBrowser();
   }
 }
 
@@ -123,7 +151,13 @@ function removeStaleChromeLocks(dir: string): void {
     if (depth > 4) return;
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
-      if (e.name === "SingletonLock" || e.name === "SingletonSocket" || e.name === "SingletonCookie") fs.rmSync(p, { force: true });
+      if (["SingletonLock", "SingletonSocket", "SingletonCookie", "lockfile"].includes(e.name)) {
+        try {
+          fs.rmSync(p, { force: true });
+        } catch {
+          /* still held by a running browser (Windows); the retry will report it */
+        }
+      }
       else if (e.isDirectory()) walk(p, depth + 1);
     }
   };

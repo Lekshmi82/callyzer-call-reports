@@ -25,6 +25,8 @@ const schema = z.object({
   /** Exact WhatsApp group names. */
   WHATSAPP_TEST_GROUP: z.string().default(""),
   WHATSAPP_LIVE_GROUP: z.string().default(""),
+  /** Open the WhatsApp Web browser window visibly (useful on a PC to see what is happening). */
+  WHATSAPP_SHOW_BROWSER: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   /** Which group the scheduled reports go to: "test" or "live". */
   SEND_TO: z.enum(["test", "live"]).default("test"),
 
