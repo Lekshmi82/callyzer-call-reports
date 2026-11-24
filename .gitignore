@@ -7,3 +7,8 @@ dist/
 coverage/
 .pgdata/
 tmp/
+# WhatsApp login session, send log and debug screenshots: never commit
+data/
+.wwebjs_cache/
+.wwebjs_auth/
+out/

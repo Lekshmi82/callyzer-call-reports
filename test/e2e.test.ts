@@ -22,7 +22,10 @@ afterAll(() => mock.server.close());
 describe("npm run report (end to end against mock Callyzer)", () => {
   it("fetches from Callyzer and renders the report image without sending anything", async () => {
     const env = { ...process.env, CALLYZER_API_TOKEN: "mock-callyzer-token", CALLYZER_BASE_URL: callyzerUrl, OUTPUT_DIR: outDir, EMPLOYEE_ALIASES: "Rohan=Riya Sharma" };
-    const { stdout } = await run("npx", ["tsx", "src/run-report.ts"], { env, cwd: path.resolve(__dirname, "..") });
+    // Run tsx through node itself: `npx` is `npx.cmd` on Windows and execFile can't start it without a shell.
+    const root = path.resolve(__dirname, "..");
+    const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
+    const { stdout } = await run(process.execPath, [tsxCli, "src/run-report.ts"], { env, cwd: root });
     expect(stdout).toContain("nothing sent");
     const png = fs.readdirSync(outDir).find((f) => f.endsWith(".png"));
     expect(fs.statSync(path.join(outDir, png!)).size).toBeGreaterThan(50_000);
