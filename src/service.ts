@@ -53,7 +53,7 @@ async function sendReport(kind: "scheduled" | "manual", key: string, to: "test" 
   const sample = !cfg.CALLYZER_API_TOKEN;
   busy = true;
   try {
-    if (sample && (kind === "scheduled" || to === "live")) throw new Error("CALLYZER_API_TOKEN is not set: only a sample report to the TEST group is allowed.");
+    if (sample && to === "live") throw new Error("CALLYZER_API_TOKEN is not set: only a sample report to the TEST group is allowed.");
     if (wa.state !== "ready") throw new Error(`WhatsApp is not connected (${wa.state}). Open the status page and scan the QR code.`);
     const report = await withRenderer((r) => buildReport(cfg, log, r, { cutoff, sample }));
     await wa.sendToGroup(group, report.png, report.caption, `call-report-${isoDate(cutoff)}.png`);
