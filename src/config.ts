@@ -1,41 +1,47 @@
 import { z } from "zod";
 
-/**
- * All configuration comes from environment variables (see .env.example). No secrets in code or Git.
- *
- * In a Claude cloud environment, the Callyzer and WhatsApp tokens can be stored as network secrets:
- * the proxy adds the Authorization header itself, so these variables can hold any placeholder value.
- */
-const list = z
-  .string()
-  .default("")
-  .transform((s) => s.split(",").map((x) => x.trim()).filter(Boolean));
+/** All configuration comes from environment variables (see .env.example). No secrets in code or Git. */
+const listOf = (def: string) =>
+  z
+    .string()
+    .default(def)
+    .transform((s) => s.split(",").map((x) => x.trim()).filter(Boolean));
+const list = listOf("");
 
 const schema = z.object({
-  CALLYZER_API_TOKEN: z.string().min(1, "CALLYZER_API_TOKEN is required"),
+  // --- Callyzer
+  CALLYZER_API_TOKEN: z.string().optional(),
   CALLYZER_BASE_URL: z.string().url().default("https://api1.callyzer.co/api/v2.3"),
   CALLYZER_INCLUDE_WHATSAPP_CALLS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   DEFAULT_COUNTRY_CODE: z.string().default("91"),
   STALE_SYNC_MINUTES: z.coerce.number().int().positive().default(90),
-  /** Names (as in Callyzer) to leave out of the report, comma-separated. */
+  /** Callyzer names to leave out of the report, comma-separated. */
   EXCLUDE_EMPLOYEES: list,
-  /** Optional renames to combine phones registered under different names: "Old Name=New Name;Other=New". */
+  /** Combine phones registered under different names: "Old Name=New Name;Other=New". */
   EMPLOYEE_ALIASES: z.string().default(""),
   REPORT_TITLE: z.string().default("Call Report"),
 
-  WHATSAPP_TOKEN: z.string().optional(),
-  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
-  WHATSAPP_API_VERSION: z.string().default("v23.0"),
-  WHATSAPP_API_BASE: z.string().url().default("https://graph.facebook.com"),
-  /** "template" (approved template with IMAGE header; works any time) or "image" (plain image + caption). */
-  WHATSAPP_MESSAGE_TYPE: z.enum(["template", "image"]).default("template"),
-  WHATSAPP_TEMPLATE_NAME: z.string().default("call_report"),
-  WHATSAPP_TEMPLATE_LANGUAGE: z.string().default("en"),
-  /** Comma-separated targets: phone numbers with country code (919876543210) or group:<GROUP_ID>. */
-  WHATSAPP_TEST_TARGETS: list,
-  WHATSAPP_LIVE_TARGETS: list,
+  // --- WhatsApp group (whatsapp-web.js)
+  /** Exact WhatsApp group names. */
+  WHATSAPP_TEST_GROUP: z.string().default(""),
+  WHATSAPP_LIVE_GROUP: z.string().default(""),
+  /** Which group the scheduled reports go to: "test" or "live". */
+  SEND_TO: z.enum(["test", "live"]).default("test"),
 
-  /** Used only to build keyed hashes of phone numbers in memory; any long random string. */
+  // --- Schedule (IST)
+  SCHEDULE_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  REPORT_SLOTS: listOf("14:00,16:00,18:00,20:00"),
+  /** ISO weekdays to send on: 1=Mon … 7=Sun */
+  REPORT_DAYS: listOf("1,2,3,4,5,6,7").transform((a) => a.map(Number).filter((n) => n >= 1 && n <= 7)),
+  /** Keep retrying a failed slot for this many minutes. */
+  GRACE_MINUTES: z.coerce.number().int().min(5).max(180).default(45),
+
+  // --- Service
+  PORT: z.coerce.number().int().positive().default(3000),
+  /** Password for the status/QR page (username: admin). */
+  ADMIN_PASSWORD: z.string().optional(),
+  /** Persistent folder for the WhatsApp login session and sent-log (mount a volume here). */
+  DATA_DIR: z.string().default("data"),
   HASH_SALT: z.string().default("callyzer-call-reports"),
   OUTPUT_DIR: z.string().default("out"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug"]).default("info"),

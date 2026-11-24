@@ -1,76 +1,48 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs";
-import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMockCallyzer } from "../dev/mock-callyzer.js";
+import { dueSlots } from "../src/schedule.js";
 
 const run = promisify(execFile);
 let callyzerUrl = "";
-let metaUrl = "";
-const metaCalls: { path: string; auth: string; body: string }[] = [];
-const servers: http.Server[] = [];
+const mock = createMockCallyzer();
 const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "report-e2e-"));
 
 beforeAll(async () => {
-  const { server } = createMockCallyzer();
-  const meta = http.createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => {
-      const body = Buffer.concat(chunks).toString("latin1");
-      metaCalls.push({ path: req.url ?? "", auth: String(req.headers.authorization), body });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      if (req.url?.endsWith("/media")) return res.end(JSON.stringify({ id: "media-123" }));
-      res.end(JSON.stringify({ messaging_product: "whatsapp", messages: [{ id: "wamid.TEST" }] }));
-    });
-  });
-  for (const s of [server, meta]) {
-    await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
-    servers.push(s);
-  }
-  callyzerUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v2.3`;
-  metaUrl = `http://127.0.0.1:${(meta.address() as AddressInfo).port}`;
+  await new Promise<void>((r) => mock.server.listen(0, "127.0.0.1", r));
+  callyzerUrl = `http://127.0.0.1:${(mock.server.address() as AddressInfo).port}/api/v2.3`;
 });
-afterAll(() => servers.forEach((s) => s.close()));
+afterAll(() => mock.server.close());
 
-describe("npm run report (end to end against mocks)", () => {
-  it("fetches, renders and sends the template with the uploaded image to the test targets", async () => {
-    const env = {
-      ...process.env,
-      CALLYZER_API_TOKEN: "mock-callyzer-token",
-      CALLYZER_BASE_URL: callyzerUrl,
-      WHATSAPP_TOKEN: "meta-token",
-      WHATSAPP_PHONE_NUMBER_ID: "111",
-      WHATSAPP_API_BASE: metaUrl,
-      WHATSAPP_TEST_TARGETS: "919000000001,group:GROUP123",
-      WHATSAPP_LIVE_TARGETS: "919999999999",
-      EMPLOYEE_ALIASES: "Rohan=Riya Sharma",
-      OUTPUT_DIR: outDir,
-      LOG_LEVEL: "info",
-    };
-    const { stdout } = await run("npx", ["tsx", "src/run-report.ts", "--target", "test"], { env, cwd: path.resolve(__dirname, "..") });
-    expect(stdout).toContain('"msg":"done"');
+describe("npm run report (end to end against mock Callyzer)", () => {
+  it("fetches from Callyzer and renders the report image without sending anything", async () => {
+    const env = { ...process.env, CALLYZER_API_TOKEN: "mock-callyzer-token", CALLYZER_BASE_URL: callyzerUrl, OUTPUT_DIR: outDir, EMPLOYEE_ALIASES: "Rohan=Riya Sharma" };
+    const { stdout } = await run("npx", ["tsx", "src/run-report.ts"], { env, cwd: path.resolve(__dirname, "..") });
+    expect(stdout).toContain("nothing sent");
     const png = fs.readdirSync(outDir).find((f) => f.endsWith(".png"));
-    expect(png).toBeTruthy();
     expect(fs.statSync(path.join(outDir, png!)).size).toBeGreaterThan(50_000);
+    expect(mock.stats.byPath["/employee/get"]).toBe(1);
+    expect(mock.stats.byPath["/call-log/history/stream"]).toBe(1);
+  });
+});
 
-    const upload = metaCalls.find((c) => c.path === "/v23.0/111/media")!;
-    expect(upload.auth).toBe("Bearer meta-token");
-    expect(upload.body).toContain('name="messaging_product"');
-    expect(upload.body).toContain("image/png");
-
-    const sends = metaCalls.filter((c) => c.path === "/v23.0/111/messages").map((c) => JSON.parse(c.body));
-    expect(sends).toHaveLength(2);
-    expect(sends[0]).toMatchObject({ recipient_type: "individual", to: "919000000001", type: "template" });
-    expect(sends[0].template.components[0]).toEqual({ type: "header", parameters: [{ type: "image", image: { id: "media-123" } }] });
-    expect(sends[0].template.components[1].parameters).toHaveLength(3);
-    expect(sends[1]).toMatchObject({ recipient_type: "group", to: "GROUP123" });
-    expect(JSON.stringify(sends)).not.toContain("919999999999"); // live target untouched
-    // No phone numbers in logs.
-    expect(stdout).not.toContain("919000000001");
+describe("schedule", () => {
+  const slots = ["14:00", "16:00", "18:00", "20:00"];
+  const all = [1, 2, 3, 4, 5, 6, 7];
+  it("finds the slot that is due within the grace window (IST)", () => {
+    const at = (iso: string) => dueSlots(new Date(iso), slots, all, 45).map((d) => d.key);
+    expect(at("2026-11-24T08:29:00Z")).toEqual([]); // 1:59 PM IST
+    expect(at("2026-11-24T08:30:00Z")).toEqual(["2026-11-24 14:00"]); // 2:00 PM IST
+    expect(at("2026-11-24T09:14:00Z")).toEqual(["2026-11-24 14:00"]); // 2:44 PM IST
+    expect(at("2026-11-24T09:15:00Z")).toEqual([]); // 2:45 PM IST, grace over
+    expect(at("2026-11-24T14:40:00Z")).toEqual(["2026-11-24 20:00"]); // 8:10 PM IST
+  });
+  it("respects weekdays", () => {
+    expect(dueSlots(new Date("2026-11-22T08:31:00Z"), slots, [1, 2, 3, 4, 5, 6], 45)).toEqual([]); // Sunday
   });
 });
