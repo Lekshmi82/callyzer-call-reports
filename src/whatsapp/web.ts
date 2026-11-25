@@ -129,8 +129,37 @@ export class WhatsAppGroupSender {
 
   /** Posts the PNG with a caption into the group with this exact name (case-insensitive). */
   async sendToGroup(groupName: string, png: Buffer, caption: string, filename: string): Promise<void> {
-    if (this.state !== "ready" || !this.client) throw new Error(`WhatsApp is not connected (state: ${this.state})`);
     if (!groupName.trim()) throw new Error("Group name is not configured");
+    // WhatsApp Web sometimes reloads itself (mostly in the first minutes after start-up), which aborts
+    // whatever the bot was doing with "Execution context was destroyed". Wait and try again.
+    const transient = /execution context was destroyed|target closed|detached frame|session closed|cannot find context|not connected/i;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.sendOnce(groupName, png, caption, filename);
+        return;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (attempt >= 4 || !transient.test(msg)) throw e;
+        this.log.warn({ attempt, err: msg }, "WhatsApp Web was busy/reloading; retrying send in 15s");
+        await new Promise((r) => setTimeout(r, 15_000));
+        await this.waitUntilReady(120_000);
+      }
+    }
+  }
+
+  private async waitUntilReady(timeoutMs: number): Promise<void> {
+    const until = Date.now() + timeoutMs;
+    while (Date.now() < until) {
+      if (this.state === "ready" && this.client) {
+        const s = await this.client.getState().catch(() => null);
+        if (s === "CONNECTED") return;
+      }
+      await new Promise((r) => setTimeout(r, 3_000));
+    }
+  }
+
+  private async sendOnce(groupName: string, png: Buffer, caption: string, filename: string): Promise<void> {
+    if (this.state !== "ready" || !this.client) throw new Error(`WhatsApp is not connected (state: ${this.state})`);
     const chats = await this.client.getChats();
     const wanted = groupName.trim().toLowerCase();
     const group = chats.find((c) => c.isGroup && c.name.trim().toLowerCase() === wanted);
