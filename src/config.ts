@@ -35,8 +35,6 @@ const schema = z.object({
   REPORT_SLOTS: listOf("14:00,16:00,18:00,20:00"),
   /** ISO weekdays to send on: 1=Mon … 7=Sun */
   REPORT_DAYS: listOf("1,2,3,4,5,6,7").transform((a) => a.map(Number).filter((n) => n >= 1 && n <= 7)),
-  /** Keep retrying a failed slot for this many minutes. */
-  GRACE_MINUTES: z.coerce.number().int().min(5).max(180).default(45),
 
   // --- Service
   PORT: z.coerce.number().int().positive().default(3000),

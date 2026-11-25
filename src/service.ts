@@ -16,7 +16,7 @@ import { clockLabel, isoDate, upcomingSlots } from "./lib/time.js";
 import { createLogger } from "./logger.js";
 import { buildReport } from "./report/build.js";
 import { PuppeteerPageRenderer, ReportRenderer, type PngRenderer } from "./report/render.js";
-import { dueSlots, StateStore } from "./schedule.js";
+import { dueSlot, StateStore } from "./schedule.js";
 import { WhatsAppGroupSender } from "./whatsapp/web.js";
 
 const cfg: AppConfig = loadConfig();
@@ -47,7 +47,9 @@ async function withRenderer<T>(fn: (r: PngRenderer) => Promise<T>): Promise<T> {
 let busy = false;
 const lastAttempt = new Map<string, number>();
 
-async function sendReport(kind: "scheduled" | "manual", key: string, to: "test" | "live", cutoff: Date): Promise<void> {
+async function sendReport(kind: "scheduled" | "manual", key: string, to: "test" | "live", supersedes: string[] = []): Promise<void> {
+  // Every report covers 00:00 IST up to the moment it is built, and says "as of" that time.
+  const cutoff = new Date();
   const group = groupFor(to);
   // Without a Callyzer key, only a watermarked SAMPLE report may go to the TEST group (to check the WhatsApp link).
   const sample = !cfg.CALLYZER_API_TOKEN;
@@ -57,7 +59,7 @@ async function sendReport(kind: "scheduled" | "manual", key: string, to: "test" 
     if (wa.state !== "ready") throw new Error(`WhatsApp is not connected (${wa.state}). Open the status page and scan the QR code.`);
     const report = await withRenderer((r) => buildReport(cfg, log, r, { cutoff, sample }));
     await wa.sendToGroup(group, report.png, report.caption, `call-report-${isoDate(cutoff)}.png`);
-    if (kind === "scheduled") state.markSent(key);
+    if (kind === "scheduled") state.markSent(key, supersedes);
     state.addHistory({ kind, key, group: to, status: "sent", detail: `${sample ? "SAMPLE data · " : ""}${report.model.team.totalCalls} calls, ${report.model.team.connectedCalls} connected` });
     log.info({ kind, key, to }, "report sent");
   } catch (e) {
@@ -73,13 +75,11 @@ async function sendReport(kind: "scheduled" | "manual", key: string, to: "test" 
 async function tick(): Promise<void> {
   const s = settings();
   if (!s.scheduleEnabled || busy) return;
-  for (const slot of dueSlots(new Date(), cfg.REPORT_SLOTS, cfg.REPORT_DAYS, cfg.GRACE_MINUTES)) {
-    if (state.isSent(slot.key)) continue;
-    if (Date.now() - (lastAttempt.get(slot.key) ?? 0) < 3 * 60_000) continue; // retry every 3 min within the grace window
-    lastAttempt.set(slot.key, Date.now());
-    await sendReport("scheduled", slot.key, s.sendTo, slot.cutoff).catch(() => undefined);
-    return; // one at a time
-  }
+  const slot = dueSlot(new Date(), cfg.REPORT_SLOTS, cfg.REPORT_DAYS);
+  if (!slot || state.isSent(slot.key)) return;
+  if (Date.now() - (lastAttempt.get(slot.key) ?? 0) < 3 * 60_000) return; // on failure, retry every 3 min until the next slot
+  lastAttempt.set(slot.key, Date.now());
+  await sendReport("scheduled", slot.key, s.sendTo, slot.earlierKeys).catch(() => undefined);
 }
 
 // ---------------- Status page ----------------
@@ -205,10 +205,15 @@ const server = http.createServer(async (req, res) => {
       }
       if (m?.[1] === "send" && (m[2] === "test" || m[2] === "live")) {
         if (busy) return back("A report is already being sent. Try again in a minute.");
-        await sendReport("manual", `manual ${new Date().toISOString()}`, m[2], new Date());
+        await sendReport("manual", `manual ${new Date().toISOString()}`, m[2]);
         return back(`Report sent to the ${m[2] === "live" ? "MAIN" : "TEST"} group.`);
       }
       if (m?.[1] === "schedule" && (m[2] === "on" || m[2] === "off")) {
+        if (m[2] === "on") {
+          // Start with the NEXT report time; don't immediately send for a time that already passed.
+          const due = dueSlot(new Date(), cfg.REPORT_SLOTS, cfg.REPORT_DAYS);
+          if (due) state.markSkipped([...due.earlierKeys, due.key], "schedule switched on later");
+        }
         state.updateSettings({ scheduleEnabled: m[2] === "on" });
         return back(`Schedule turned ${m[2].toUpperCase()}.`);
       }

@@ -60,7 +60,6 @@ npm run mock:callyzer       # mock Callyzer API on :4010 (token: mock-callyzer-t
 | `SCHEDULE_ENABLED` | Default `false`; the status page can override |
 | `REPORT_SLOTS` | `14:00,16:00,18:00,20:00` (IST, 24h). **Reset this if it was left on test times** |
 | `REPORT_DAYS` | ISO weekdays `1..7` |
-| `GRACE_MINUTES` | Default 45. A missed or failed slot is retried every 3 min within this window |
 | `ADMIN_PASSWORD` | Status page password (user `admin`). **The first password was shared in chat; it should be changed** |
 | `WHATSAPP_SHOW_BROWSER` | `true` shows the WhatsApp Web window (PC debugging) |
 | `EXCLUDE_EMPLOYEES` | Comma list of Callyzer names to hide |
@@ -92,7 +91,7 @@ Dockerfile, railway.json  Container deploy (Railway or any Docker host); volume 
 - `POST /call-log/employee-summary`: currently used only as a **cross-check** (warnings in logs if counts differ). Working/idle hours are no longer shown.
 - `POST /call-log/history/stream`: NDJSON with an END marker. Falls back to paged `POST /call-log/history` if incomplete.
 - Every call-log request needs `call_method` + `call_mode`. Default `PhoneCall` + `Voice`; `CALLYZER_INCLUDE_WHATSAPP_CALLS=true` adds WhatsApp voice/video.
-- Time window: `call_from` = 00:00 IST today, `call_to` = slot time (scheduled) or now (manual).
+- Time window: `call_from` = 00:00 IST today, `call_to` = the moment the report is built (scheduled and manual).
 
 ## Report format (as agreed with the user)
 
@@ -118,7 +117,7 @@ WhatsApp caption: `*Call Report · <date>*` / `As of <time> IST · N calls, N co
 ## Open items / next steps
 
 1. **Callyzer key**: add it to `.env`, restart, click **Preview image (no send)**, and compare totals with the Callyzer dashboard. Watch logs for `Cross-check:` warnings. If you get a 404, set `CALLYZER_BASE_URL=https://api1.callyzer.co/v2.1`.
-2. **"As of" time**: the user said the time looked wrong. Not yet clarified: ask what was shown vs expected. Manual sends use the button-press time; scheduled sends use the slot time; all labels are Asia/Kolkata.
+2. **"As of" time**: now always the actual send time (Asia/Kolkata), for scheduled and manual sends.
 3. **Main group**: set `WHATSAPP_LIVE_GROUP`, test with real data in the test group first, then on the status page: Switch to MAIN group → Turn schedule ON (only when the user says so).
 4. **Reset test slots**: if `REPORT_SLOTS` was set to 3-minute test times, set it back to `14:00,16:00,18:00,20:00`.
 5. **Change `ADMIN_PASSWORD`** (the original one was posted in chat).
@@ -133,5 +132,5 @@ WhatsApp caption: `*Call Report · <date>*` / `As of <time> IST · N calls, N co
   `Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*ms-playwright*" } | Stop-Process -Force`
 - Windows PowerShell blocks `npm.ps1` → use `npm.cmd`, or `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 - `npm audit` flags transitive puppeteer download tooling (basic-ftp, extract-zip). Not used at runtime (`.puppeteerrc.cjs` skips the download).
-- If the PC sleeps or is off at a slot, that slot is sent when it's back **only within 45 min**; otherwise it's skipped.
+- If the PC sleeps or is off at a slot, one up-to-date report is sent when it's back, before the next slot (or midnight). Older missed slots are skipped (the newer report contains their data). Turning the schedule ON waits for the next slot instead of sending immediately.
 - Group lookup is by **exact name** (case-insensitive). Renaming the group breaks it until `.env` is updated; the status page lists the number's group names.

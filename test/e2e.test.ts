@@ -6,7 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMockCallyzer } from "../dev/mock-callyzer.js";
-import { dueSlots } from "../src/schedule.js";
+import { dueSlot } from "../src/schedule.js";
 
 const run = promisify(execFile);
 let callyzerUrl = "";
@@ -37,15 +37,19 @@ describe("npm run report (end to end against mock Callyzer)", () => {
 describe("schedule", () => {
   const slots = ["14:00", "16:00", "18:00", "20:00"];
   const all = [1, 2, 3, 4, 5, 6, 7];
-  it("finds the slot that is due within the grace window (IST)", () => {
-    const at = (iso: string) => dueSlots(new Date(iso), slots, all, 45).map((d) => d.key);
-    expect(at("2026-11-24T08:29:00Z")).toEqual([]); // 1:59 PM IST
-    expect(at("2026-11-24T08:30:00Z")).toEqual(["2026-11-24 14:00"]); // 2:00 PM IST
-    expect(at("2026-11-24T09:14:00Z")).toEqual(["2026-11-24 14:00"]); // 2:44 PM IST
-    expect(at("2026-11-24T09:15:00Z")).toEqual([]); // 2:45 PM IST, grace over
-    expect(at("2026-11-24T14:40:00Z")).toEqual(["2026-11-24 20:00"]); // 8:10 PM IST
+  const at = (iso: string, days = all) => dueSlot(new Date(iso), slots, days)?.key ?? null;
+  it("picks the latest passed slot of today and keeps it due until the next slot", () => {
+    expect(at("2026-11-24T08:29:00Z")).toBeNull(); // 1:59 PM IST
+    expect(at("2026-11-24T08:30:00Z")).toBe("2026-11-24 14:00"); // 2:00 PM
+    expect(at("2026-11-24T10:29:00Z")).toBe("2026-11-24 14:00"); // 3:59 PM: still the 2 PM slot
+    expect(at("2026-11-24T10:30:00Z")).toBe("2026-11-24 16:00"); // 4:00 PM
+    expect(at("2026-11-24T16:00:00Z")).toBe("2026-11-24 20:00"); // 9:30 PM: PC came back late, 8 PM still due
+    expect(at("2026-11-24T18:31:00Z")).toBeNull(); // 12:01 AM next day: nothing yet
+  });
+  it("lists earlier slots so a late catch-up supersedes them", () => {
+    expect(dueSlot(new Date("2026-11-24T14:35:00Z"), slots, all)?.earlierKeys).toEqual(["2026-11-24 14:00", "2026-11-24 16:00", "2026-11-24 18:00"]);
   });
   it("respects weekdays", () => {
-    expect(dueSlots(new Date("2026-11-22T08:31:00Z"), slots, [1, 2, 3, 4, 5, 6], 45)).toEqual([]); // Sunday
+    expect(at("2026-11-22T08:31:00Z", [1, 2, 3, 4, 5, 6])).toBeNull(); // Sunday
   });
 });

@@ -6,7 +6,7 @@ Fetches today's call data from **Callyzer** and builds the call report image (ca
 
 An always-on service (`npm start`) keeps a WhatsApp Web login (whatsapp-web.js) for the sending number and posts the report image into a WhatsApp group at **2, 4, 6 and 8 PM IST**. A password-protected status page shows the QR login, lets you send a test report, and turns the schedule on/off and switches TEST ↔ MAIN group.
 
-**Safety defaults:** schedule **OFF**, target **TEST group**. Each scheduled slot is sent at most once (sent-log in `DATA_DIR/state.json`); a failed slot is retried every 3 min for 45 min.
+**Safety defaults:** schedule **OFF**, target **TEST group**. Each report covers 00:00 IST up to the moment it is sent and says "as of" that time. Each slot is sent at most once (sent-log in `DATA_DIR/state.json`). If the PC was off at a slot, one up-to-date report is sent when it is back, any time before the next slot (or midnight); a failed send is retried every 3 min.
 
 > whatsapp-web.js is unofficial WhatsApp automation. WhatsApp may block the sending number. Use a dedicated number.
 
@@ -23,7 +23,7 @@ An always-on service (`npm start`) keeps a WhatsApp Web login (whatsapp-web.js) 
 3. Copy `.env.example` to `.env` and fill in `CALLYZER_API_TOKEN`, `ADMIN_PASSWORD`, `WHATSAPP_TEST_GROUP`, `WHATSAPP_LIVE_GROUP`, `HASH_SALT`.
 4. `npm start`, then open **http://localhost:3000** (user `admin`, your `ADMIN_PASSWORD`) and scan the QR code.
 
-The PC must be on and awake at the report times (a missed slot is retried for 45 minutes once it is back). Moving to a cloud host later only needs the same `.env` values and one new QR scan.
+The PC should be on and awake at the report times. If it was off, one up-to-date report is sent when it comes back (before the next slot, or midnight after 8 PM). Moving to a cloud host later only needs the same `.env` values and one new QR scan.
 
 ## Deploy on Railway
 
