@@ -60,6 +60,11 @@ async function sendReport(kind: "scheduled" | "manual", key: string, to: "test" 
     const report = await withRenderer((r) => buildReport(cfg, log, r, { cutoff, sample }));
     await wa.sendToGroup(group, report.png, report.caption, `call-report-${isoDate(cutoff)}.png`);
     if (kind === "scheduled") state.markSent(key, supersedes);
+    else if (to === settings().sendTo) {
+      // A manual send to the scheduled group counts as the current slot's report (no duplicate catch-up).
+      const due = dueSlot(cutoff, cfg.REPORT_SLOTS, cfg.REPORT_DAYS);
+      if (due) state.markSkipped([...due.earlierKeys, due.key], "sent manually");
+    }
     state.addHistory({ kind, key, group: to, status: "sent", detail: `${sample ? "SAMPLE data · " : ""}${report.model.team.totalCalls} calls, ${report.model.team.connectedCalls} connected` });
     log.info({ kind, key, to }, "report sent");
   } catch (e) {
